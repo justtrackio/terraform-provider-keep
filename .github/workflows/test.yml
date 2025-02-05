@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    env:
+      TF_ACC: "1"
+      KEEP_BACKEND_URL: "http://localhost:8080"
+      KEEP_API_KEY: "keepappkey"
+      AKS_SUBSCRIPTION_ID: "test-subscription-id"
+      AKS_CLIENT_ID: "test-client-id"
+      AKS_CLIENT_SECRET: "test-client-secret"
+      AKS_TENANT_ID: "test-tenant-id"
+      AKS_RESOURCE_GROUP_NAME: "test-resource-group"
+      AKS_RESOURCE_NAME: "test-resource-name"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23'
+          cache: true
+
+      - name: Setup state directory with proper permissions
+        run: |
+          mkdir -p state
+          chmod 777 state
+          touch state/db.sqlite3
+          chmod 666 state/db.sqlite3
+
+      - name: Start Keep backend
+        uses: hoverkraft-tech/compose-action@v2.2.0
+
+      - name: Wait for Keep backend
+        timeout-minutes: 2
+        run: |
+          echo "Waiting for Keep backend API..."
+          max_retries=12
+          retry_count=0
+          while [ $retry_count -lt $max_retries ]; do
+            if curl -s -f -H "X-API-KEY: keepappkey" http://localhost:8080/providers > /dev/null; then
+              echo "Keep backend is ready"
+              exit 0
+            fi
+            retry_count=$((retry_count + 1))
+            echo "Attempt $retry_count of $max_retries: Waiting for Keep backend..."
+            sleep 10
+          done
+          echo "Keep backend failed to respond"
+          docker compose logs
+          exit 1
+
+      - name: Run tests
+        run: go test -v -timeout 10m ./...

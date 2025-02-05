@@ -100,6 +100,29 @@ TF_ACC=1 go test ./keep -v -run "TestAccProvider|TestAccResourceProvider"
 
 Note: These are acceptance tests that create and destroy real resources. Make sure you're using test credentials and resources.
 
+### Running Tests with Docker Compose
+
+You can also run the tests using Docker Compose, which will automatically set up a local Keep backend instance.
+
+Then run the tests with:
+
+```bash
+# Start the Keep backend
+docker compose up -d
+
+# Run tests with test credentials
+export AKS_SUBSCRIPTION_ID=test-subscription-id
+export AKS_CLIENT_ID=test-client-id
+export AKS_CLIENT_SECRET=test-client-secret
+export AKS_TENANT_ID=test-tenant-id
+export AKS_RESOURCE_GROUP_NAME=test-resource-group
+export AKS_RESOURCE_NAME=test-resource-name
+TF_ACC=1 KEEP_BACKEND_URL=http://localhost:8080 KEEP_API_KEY=keepappkey go test ./... -v
+
+# Clean up
+docker compose down
+```
+
 For more information, please refer to the [documentation](https://registry.terraform.io/providers/pehlicd/keep/latest/docs).
 
 You can also find some hands-on examples in the [examples](./examples) directory.

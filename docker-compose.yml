@@ -1,0 +1,16 @@
+services:
+  keep-backend:
+    image: us-central1-docker.pkg.dev/keephq/keep/keep-api:latest
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - SECRET_MANAGER_TYPE=FILE
+      - SECRET_MANAGER_DIRECTORY=/state
+      - DATABASE_CONNECTION_STRING=sqlite:////state/db.sqlite3?check_same_thread=False
+      - USE_NGROK=false
+      - API_KEY=keepappkey
+      - LOG_LEVEL=DEBUG
+      - PYTHONUNBUFFERED=1
+    volumes:
+      - ./state:/state
