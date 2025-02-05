@@ -69,6 +69,37 @@ data "keep_mapping" "example_mapping_data" {
 }
 ```
 
+## Testing
+
+To run the acceptance tests for this provider, you'll need to set the following environment variables:
+
+```bash
+# Keep API Configuration
+export KEEP_BACKEND_URL="your-keep-backend-url"
+export KEEP_API_KEY="your-keep-api-key"
+export KEEP_TIMEOUT="30s"  # Optional, defaults to 30s
+
+# AKS Provider Test Configuration
+export AKS_SUBSCRIPTION_ID="your-subscription-id"
+export AKS_CLIENT_ID="your-client-id"
+export AKS_CLIENT_SECRET="your-client-secret"
+export AKS_TENANT_ID="your-tenant-id"
+export AKS_RESOURCE_GROUP_NAME="your-resource-group"
+export AKS_RESOURCE_NAME="your-resource-name"
+```
+
+Then run the tests using:
+
+```bash
+# Run all tests
+TF_ACC=1 go test ./... -v
+
+# Run specific tests
+TF_ACC=1 go test ./keep -v -run "TestAccProvider|TestAccResourceProvider"
+```
+
+Note: These are acceptance tests that create and destroy real resources. Make sure you're using test credentials and resources.
+
 For more information, please refer to the [documentation](https://registry.terraform.io/providers/pehlicd/keep/latest/docs).
 
 You can also find some hands-on examples in the [examples](./examples) directory.

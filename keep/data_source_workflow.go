@@ -2,10 +2,8 @@ package keep
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"net/http"
 )
 
 func dataSourceWorkflows() *schema.Resource {
@@ -95,42 +93,31 @@ func dataSourceWorkflows() *schema.Resource {
 
 func dataSourceReadWorkflow(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*Client)
-
 	id := d.Get("id").(string)
 
-	req, err := http.NewRequest("GET", client.HostURL+"/workflows/", nil)
-
-	body, err := client.doReq(req)
+	response, errResp, err := client.GetWorkflow(id)
 	if err != nil {
-		return diag.Errorf("cannot send request: %s", err)
-	}
-
-	var response []map[string]interface{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return diag.Errorf("cannot unmarshal response: %s", err)
-	}
-
-	for _, workflow := range response {
-		if workflow["id"] == id {
-			d.SetId(workflow["id"].(string))
-			d.Set("name", workflow["name"])
-			d.Set("description", workflow["description"])
-			d.Set("created_by", workflow["created_by"])
-			d.Set("creation_time", workflow["creation_time"])
-			d.Set("triggers", workflow["triggers"])
-			d.Set("interval", workflow["interval"])
-			d.Set("last_execution_time", workflow["last_execution_time"])
-			d.Set("last_execution_status", workflow["last_execution_status"])
-			d.Set("keep_providers", workflow["providers"])
-			d.Set("workflow_raw_id", workflow["workflow_raw_id"])
-			d.Set("workflow_raw", workflow["workflow_raw"])
-			d.Set("revision", workflow["revision"])
-			d.Set("last_updated", workflow["last_updated"])
-			d.Set("invalid", workflow["invalid"])
-			break
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
 		}
+		return diag.Errorf("error reading workflow: %s", err)
 	}
+
+	d.SetId(id)
+	d.Set("name", response["name"])
+	d.Set("description", response["description"])
+	d.Set("created_by", response["created_by"])
+	d.Set("creation_time", response["creation_time"])
+	d.Set("triggers", response["triggers"])
+	d.Set("interval", response["interval"])
+	d.Set("last_execution_time", response["last_execution_time"])
+	d.Set("last_execution_status", response["last_execution_status"])
+	d.Set("keep_providers", response["providers"])
+	d.Set("workflow_raw_id", response["workflow_raw_id"])
+	d.Set("workflow_raw", response["workflow_raw"])
+	d.Set("revision", response["revision"])
+	d.Set("last_updated", response["last_updated"])
+	d.Set("invalid", response["invalid"])
 
 	return nil
 }

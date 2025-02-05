@@ -2,10 +2,8 @@ package keep
 
 import (
 	"context"
-	"encoding/json"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"net/http"
 	"strconv"
 )
 
@@ -72,36 +70,31 @@ func dataSourceMapping() *schema.Resource {
 
 func dataSourceReadMapping(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*Client)
-
 	id := d.Get("id").(int)
 
-	req, err := http.NewRequest("GET", client.HostURL+"/mapping/", nil)
-
-	body, err := client.doReq(req)
+	mappings, errResp, err := client.GetMappings()
 	if err != nil {
-		return diag.Errorf("cannot send request: %s", err)
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+		}
+		return diag.Errorf("error reading mappings: %s", err)
 	}
 
-	var response []Mapping
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return diag.Errorf("cannot unmarshal response: %s", err)
-	}
-
-	for _, mapping := range response {
-		if mapping.ID == id {
+	for _, m := range mappings {
+		mapping := m.(map[string]interface{})
+		if int(mapping["id"].(float64)) == id {
 			d.SetId(strconv.Itoa(id))
 			d.Set("id", strconv.Itoa(id))
-			d.Set("name", mapping.Name)
-			d.Set("description", mapping.Description)
-			d.Set("file_name", mapping.FileName)
-			d.Set("matchers", mapping.Matchers)
-			d.Set("attributes", mapping.Attributes)
-			d.Set("created_at", mapping.CreatedAt)
-			d.Set("created_by", mapping.CreatedBy)
-			break
+			d.Set("name", mapping["name"])
+			d.Set("description", mapping["description"])
+			d.Set("file_name", mapping["file_name"])
+			d.Set("matchers", mapping["matchers"])
+			d.Set("attributes", mapping["attributes"])
+			d.Set("created_at", mapping["created_at"])
+			d.Set("created_by", mapping["created_by"])
+			return nil
 		}
 	}
 
-	return nil
+	return diag.Errorf("mapping with ID %d not found", id)
 }

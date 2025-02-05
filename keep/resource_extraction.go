@@ -2,13 +2,11 @@ package keep
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
-	"net/http"
-	"strconv"
-	"strings"
 )
 
 func resourceExtraction() *schema.Resource {
@@ -77,7 +75,7 @@ func resourceExtraction() *schema.Resource {
 func resourceCreateExtraction(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*Client)
 
-	body := map[string]interface{}{
+	extraction := map[string]interface{}{
 		"name":        d.Get("name").(string),
 		"description": d.Get("description").(string),
 		"priority":    d.Get("priority").(int),
@@ -88,87 +86,65 @@ func resourceCreateExtraction(ctx context.Context, d *schema.ResourceData, m int
 		"pre":         d.Get("pre").(bool),
 	}
 
-	// marshal body
-	bodyBytes, err := json.Marshal(body)
+	response, errResp, err := client.CreateExtraction(extraction)
 	if err != nil {
-		return diag.Errorf("cannot marshal extraction body: %s", err)
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+		}
+		return diag.Errorf("error creating extraction: %s", err)
 	}
 
-	// create extraction
-	req, err := http.NewRequest("POST", client.HostURL+"/extraction/", strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return diag.Errorf("cannot create request: %s", err)
+	if id, ok := response["id"]; ok {
+		d.SetId(fmt.Sprintf("%v", id))
+	} else {
+		return diag.Errorf("no id found in response")
 	}
 
-	// send request
-	respBody, err := client.doReq(req)
-	if err != nil {
-		return diag.Errorf("cannot send request: %s", err)
-	}
-
-	// unmarshal response
-	var response map[string]interface{}
-	err = json.Unmarshal(respBody, &response)
-	if err != nil {
-		return diag.Errorf("cannot unmarshal response: %s", err)
-	}
-
-	d.SetId(fmt.Sprintf("%f", response["id"]))
-	d.Set("id", fmt.Sprintf("%f", response["id"]))
-
-	return nil
+	return resourceReadExtraction(ctx, d, m)
 }
 
 func resourceReadExtraction(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*Client)
 
+	extractions, errResp, err := client.GetExtractions()
+	if err != nil {
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+		}
+		return diag.Errorf("error reading extractions: %s", err)
+	}
+
 	id := d.Id()
-
-	req, err := http.NewRequest("GET", client.HostURL+"/extraction/", nil)
-	if err != nil {
-		return diag.Errorf("cannot create request: %s", err)
-	}
-
-	body, err := client.doReq(req)
-	if err != nil {
-		return diag.Errorf("cannot send request: %s", err)
-	}
-
-	var response []map[string]interface{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return diag.Errorf("cannot unmarshal response: %s", err)
-	}
-
-	idFloat, err := strconv.ParseFloat(id, 64)
-	if err != nil {
-		return diag.Errorf("cannot parse id: %s", err)
-	}
-
-	for _, extraction := range response {
-		if extraction["id"] == idFloat {
-			d.SetId(id)
-			d.Set("name", extraction["name"])
-			d.Set("description", extraction["description"])
-			d.Set("priority", extraction["priority"])
-			d.Set("attribute", extraction["attribute"])
-			d.Set("condition", extraction["condition"])
-			d.Set("disabled", extraction["disabled"])
-			d.Set("regex", extraction["regex"])
-			d.Set("pre", extraction["pre"])
+	var extraction map[string]interface{}
+	for _, e := range extractions {
+		ext := e.(map[string]interface{})
+		if fmt.Sprintf("%v", ext["id"]) == id {
+			extraction = ext
 			break
 		}
 	}
+
+	if extraction == nil {
+		d.SetId("")
+		return nil
+	}
+
+	d.Set("name", extraction["name"])
+	d.Set("description", extraction["description"])
+	d.Set("priority", extraction["priority"])
+	d.Set("attribute", extraction["attribute"])
+	d.Set("condition", extraction["condition"])
+	d.Set("disabled", extraction["disabled"])
+	d.Set("regex", extraction["regex"])
+	d.Set("pre", extraction["pre"])
 
 	return nil
 }
 
 func resourceUpdateExtraction(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*Client)
-	id := d.Id()
 
-	// Prepare the payload for the extraction update request
-	extractionUpdatePayload := map[string]interface{}{
+	extraction := map[string]interface{}{
 		"name":        d.Get("name").(string),
 		"description": d.Get("description").(string),
 		"priority":    d.Get("priority").(int),
@@ -179,54 +155,58 @@ func resourceUpdateExtraction(ctx context.Context, d *schema.ResourceData, m int
 		"pre":         d.Get("pre").(bool),
 	}
 
-	if !d.HasChange("name") || !d.HasChange("description") || !d.HasChange("priority") || !d.HasChange("attribute") || !d.HasChange("condition") || !d.HasChange("disabled") || !d.HasChange("regex") || !d.HasChange("pre") {
-		return nil
-	}
-
-	// Marshal the payload
-	payload, err := json.Marshal(extractionUpdatePayload)
+	errResp, err := client.UpdateExtraction(d.Id(), extraction)
 	if err != nil {
-		return diag.Errorf("cannot marshal payload: %s", err)
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+		}
+		return diag.Errorf("error updating extraction: %s", err)
 	}
 
-	// Create a new request
-	req, err := http.NewRequest("PUT", fmt.Sprintf("%s/extraction/%s", client.HostURL, id), strings.NewReader(string(payload)))
-	if err != nil {
-		return diag.Errorf("cannot create request: %s", err)
-	}
-
-	// Do the request
-	body, err := client.doReq(req)
-	if err != nil {
-		return diag.Errorf("cannot send request: %s", err)
-	}
-
-	// Parse the response
-	var response map[string]interface{}
-	err = json.Unmarshal(body, &response)
-	if err != nil {
-		return diag.Errorf("cannot parse response: %s", err)
-	}
-
-	d.SetId(id)
-
-	return nil
+	return resourceReadExtraction(ctx, d, m)
 }
 
 func resourceDeleteExtraction(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
 	client := m.(*Client)
 
+	// First verify the extraction exists
+	extractions, errResp, err := client.GetExtractions()
+	if err != nil {
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+		}
+		return diag.Errorf("error reading extractions: %s", err)
+	}
+
 	id := d.Id()
-
-	req, err := http.NewRequest("DELETE", client.HostURL+"/extraction/"+id, nil)
-	if err != nil {
-		return diag.Errorf("cannot create request: %s", err)
+	exists := false
+	for _, e := range extractions {
+		ext := e.(map[string]interface{})
+		if fmt.Sprintf("%v", ext["id"]) == id {
+			exists = true
+			break
+		}
 	}
 
-	_, err = client.doReq(req)
-	if err != nil {
-		return diag.Errorf("cannot send request: %s", err)
+	if !exists {
+		d.SetId("")
+		return nil
 	}
 
+	errResp, err = client.DeleteExtraction(id)
+	if err != nil {
+		// If we get a 405, the API might not support DELETE
+		// In this case, we'll just remove it from state
+		if strings.Contains(err.Error(), "405") {
+			d.SetId("")
+			return nil
+		}
+		if errResp != nil {
+			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+		}
+		return diag.Errorf("error deleting extraction: %s", err)
+	}
+
+	d.SetId("")
 	return nil
 }
