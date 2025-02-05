@@ -2,6 +2,8 @@ package keep
 
 import (
 	"context"
+	"strings"
+
 	"github.com/hashicorp/terraform-plugin-sdk/v2/diag"
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/schema"
 )
@@ -47,7 +49,7 @@ func resourceProvider() *schema.Resource {
 }
 
 func resourceCreateProvider(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*Client)
+	client := m.(KeepClient)
 	providerType := d.Get("type").(string)
 	providerName := d.Get("name").(string)
 	authConfig := d.Get("auth_config").(map[string]interface{})
@@ -56,21 +58,27 @@ func resourceCreateProvider(ctx context.Context, d *schema.ResourceData, m inter
 	providers, errResp, err := client.GetAvailableProviders()
 	if err != nil {
 		if errResp != nil {
-			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+			return diag.Errorf("Failed to get available providers: %s. Details: %s", errResp.Error, errResp.Details)
 		}
-		return diag.FromErr(err)
+		return diag.Errorf("Failed to get available providers: %s", err.Error())
 	}
 
 	found := false
+	availableTypes := make([]string, 0)
 	for _, provider := range providers {
-		if provider.(map[string]interface{})["type"] == providerType {
-			found = true
-			break
+		if p, ok := provider.(map[string]interface{}); ok {
+			if pType, exists := p["type"].(string); exists {
+				availableTypes = append(availableTypes, pType)
+				if pType == providerType {
+					found = true
+					break
+				}
+			}
 		}
 	}
 
 	if !found {
-		return diag.Errorf("provider type %s not found", providerType)
+		return diag.Errorf("Provider type '%s' not found. Available provider types: %v", providerType, availableTypes)
 	}
 
 	// Prepare installation payload
@@ -86,13 +94,20 @@ func resourceCreateProvider(ctx context.Context, d *schema.ResourceData, m inter
 	response, errResp, err := client.InstallProvider(installPayload)
 	if err != nil {
 		if errResp != nil {
-			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+			if strings.Contains(errResp.Details, "Missing required scopes") {
+				return diag.Errorf("Failed to install provider: insufficient permissions. %s", errResp.Details)
+			}
+			return diag.Errorf("Failed to install provider: %s. Details: %s. Payload: %v", errResp.Error, errResp.Details, installPayload)
 		}
-		return diag.FromErr(err)
+		return diag.Errorf("Failed to install provider: %s. Payload: %v", err.Error(), installPayload)
+	}
+
+	if response == nil {
+		return diag.Errorf("Provider installation failed: received empty response. Payload: %v", installPayload)
 	}
 
 	if response["id"] == nil {
-		return diag.Errorf("provider installation failed: no ID returned")
+		return diag.Errorf("Provider installation failed: no ID returned in response. Response: %v, Payload: %v", response, installPayload)
 	}
 
 	id := response["id"].(string)
@@ -103,11 +118,13 @@ func resourceCreateProvider(ctx context.Context, d *schema.ResourceData, m inter
 		errResp, err := client.InstallProviderWebhook(providerType, id)
 		if err != nil {
 			if errResp != nil {
-				return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+				if strings.Contains(errResp.Details, "Missing required scopes") {
+					return diag.Errorf("Failed to install webhook: insufficient permissions. %s", errResp.Details)
+				}
+				return diag.Errorf("Failed to install webhook: %s. Details: %s", errResp.Error, errResp.Details)
 			}
-			return diag.FromErr(err)
+			return diag.Errorf("Failed to install webhook: %s", err.Error())
 		}
-
 	}
 
 	return resourceReadProvider(ctx, d, m)
@@ -122,34 +139,44 @@ func resourceDeleteProvider(ctx context.Context, d *schema.ResourceData, m inter
 	errResp, err := client.DeleteProvider(providerType, id)
 	if err != nil {
 		if errResp != nil {
-			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+			if strings.Contains(errResp.Details, "Missing required scopes") {
+				return diag.Errorf("Failed to delete provider: insufficient permissions. %s", errResp.Details)
+			}
+			return diag.Errorf("Failed to delete provider: %s. Details: %s", errResp.Error, errResp.Details)
 		}
-		return diag.Errorf("error deleting provider: %s", err)
+		return diag.Errorf("Failed to delete provider: %s", err.Error())
 	}
 
 	return nil
 }
 
 func resourceReadProvider(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*Client)
+	client := m.(KeepClient)
 	id := d.Id()
 
 	providers, errResp, err := client.GetInstalledProviders()
 	if err != nil {
 		if errResp != nil {
-			return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+			if strings.Contains(errResp.Details, "Missing required scopes") {
+				return diag.Errorf("Failed to get installed providers: insufficient permissions. %s", errResp.Details)
+			}
+			return diag.Errorf("Failed to get installed providers: %s. Details: %s", errResp.Error, errResp.Details)
 		}
-		return diag.FromErr(err)
+		return diag.Errorf("Failed to get installed providers: %s", err.Error())
 	}
 
 	for _, provider := range providers {
 		p := provider.(map[string]interface{})
 		if p["id"] == id {
-			d.Set("type", p["type"])
+			if err := d.Set("type", p["type"]); err != nil {
+				return diag.Errorf("Failed to set type: %s", err.Error())
+			}
 
 			if details, ok := p["details"].(map[string]interface{}); ok {
 				if name, exists := details["name"].(string); exists {
-					d.Set("name", name)
+					if err := d.Set("name", name); err != nil {
+						return diag.Errorf("Failed to set name: %s", err.Error())
+					}
 				}
 
 				if auth, exists := details["authentication"].(map[string]interface{}); exists {
@@ -157,7 +184,9 @@ func resourceReadProvider(ctx context.Context, d *schema.ResourceData, m interfa
 					for key, value := range auth {
 						authConfig[key] = value
 					}
-					d.Set("auth_config", authConfig)
+					if err := d.Set("auth_config", authConfig); err != nil {
+						return diag.Errorf("Failed to set auth_config: %s", err.Error())
+					}
 				}
 			}
 
@@ -170,7 +199,7 @@ func resourceReadProvider(ctx context.Context, d *schema.ResourceData, m interfa
 }
 
 func resourceUpdateProvider(ctx context.Context, d *schema.ResourceData, m interface{}) diag.Diagnostics {
-	client := m.(*Client)
+	client := m.(KeepClient)
 	id := d.Id()
 	providerType := d.Get("type").(string)
 
@@ -200,13 +229,20 @@ func resourceUpdateProvider(ctx context.Context, d *schema.ResourceData, m inter
 		response, errResp, err := client.InstallProvider(createPayload)
 		if err != nil {
 			if errResp != nil {
-				return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+				if strings.Contains(errResp.Details, "Missing required scopes") {
+					return diag.Errorf("Failed to install provider: insufficient permissions. %s", errResp.Details)
+				}
+				return diag.Errorf("Failed to install provider: %s. Details: %s. Payload: %v", errResp.Error, errResp.Details, createPayload)
 			}
-			return diag.FromErr(err)
+			return diag.Errorf("Failed to install provider: %s. Payload: %v", err.Error(), createPayload)
+		}
+
+		if response == nil {
+			return diag.Errorf("Provider installation failed: received empty response. Payload: %v", createPayload)
 		}
 
 		if response["id"] == nil {
-			return diag.Errorf("provider creation failed: no ID returned")
+			return diag.Errorf("Provider installation failed: no ID returned in response. Response: %v, Payload: %v", response, createPayload)
 		}
 
 		// Set new ID
@@ -218,11 +254,13 @@ func resourceUpdateProvider(ctx context.Context, d *schema.ResourceData, m inter
 			errResp, err := client.InstallProviderWebhook(providerType, newID)
 			if err != nil {
 				if errResp != nil {
-					return diag.Errorf("API Error: %s. Details: %s", errResp.Error, errResp.Details)
+					if strings.Contains(errResp.Details, "Missing required scopes") {
+						return diag.Errorf("Failed to install webhook: insufficient permissions. %s", errResp.Details)
+					}
+					return diag.Errorf("Failed to install webhook: %s. Details: %s", errResp.Error, errResp.Details)
 				}
-				return diag.FromErr(err)
+				return diag.Errorf("Failed to install webhook: %s", err.Error())
 			}
-
 		}
 
 	}
