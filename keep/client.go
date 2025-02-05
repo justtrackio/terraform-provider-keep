@@ -18,11 +18,46 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// KeepClient interface defines the methods that need to be implemented
+type KeepClient interface {
+	GetAvailableProviders() ([]interface{}, *ErrorResponse, error)
+	GetInstalledProviders() ([]interface{}, *ErrorResponse, error)
+	InstallProvider(providerConfig map[string]interface{}) (map[string]interface{}, *ErrorResponse, error)
+	DeleteProvider(providerType, providerID string) (*ErrorResponse, error)
+	InstallProviderWebhook(providerType, providerID string) (*ErrorResponse, error)
+}
+
 // Client struct with Api Key needed to authenticate against keep
 type Client struct {
 	HostURL    string
 	HTTPClient *http.Client
 	ApiKey     string
+}
+
+// Ensure Client implements KeepClient interface
+var _ KeepClient = &Client{}
+
+// Helper function to check if the error is related to missing scopes
+func isScopesError(body []byte) (bool, string) {
+	var errorResp struct {
+		Detail map[string]string `json:"detail"`
+	}
+	if err := json.Unmarshal(body, &errorResp); err != nil {
+		return false, ""
+	}
+
+	if len(errorResp.Detail) > 0 {
+		missingScopes := make([]string, 0)
+		for scope, msg := range errorResp.Detail {
+			if msg == "Missing scope" {
+				missingScopes = append(missingScopes, scope)
+			}
+		}
+		if len(missingScopes) > 0 {
+			return true, fmt.Sprintf("Missing required scopes: %v", missingScopes)
+		}
+	}
+	return false, ""
 }
 
 // ErrorResponse struct for API error responses
@@ -62,14 +97,21 @@ func (c *Client) doReq(req *http.Request) ([]byte, *ErrorResponse, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		var errResp ErrorResponse
-		if err := json.Unmarshal(body, &errResp); err == nil {
-			return body, &errResp, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+		if isScopeError, scopeDetails := isScopesError(body); isScopeError {
+			return nil, &ErrorResponse{
+				Error:   "Insufficient permissions",
+				Details: scopeDetails,
+			}, fmt.Errorf("API request failed: insufficient permissions")
 		}
-		return body, &ErrorResponse{
+
+		var errResp ErrorResponse
+		if err := json.Unmarshal(body, &errResp); err == nil && (errResp.Error != "" || errResp.Details != "") {
+			return nil, &errResp, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+		}
+		return nil, &ErrorResponse{
 			Error:   fmt.Sprintf("request failed with status %d", resp.StatusCode),
 			Details: string(body),
-		}, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+		}, fmt.Errorf("API request failed with status %d: %s", resp.StatusCode, string(body))
 	}
 
 	return body, nil, nil
@@ -81,23 +123,25 @@ func (c *Client) doReq(req *http.Request) ([]byte, *ErrorResponse, error) {
 func (c *Client) GetAvailableProviders() ([]interface{}, *ErrorResponse, error) {
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/providers", c.HostURL), nil)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
 	body, errResp, err := c.doReq(req)
 	if err != nil {
-		return nil, errResp, err
+		return nil, errResp, fmt.Errorf("failed to get available providers: %v", err)
 	}
 
 	var response map[string]interface{}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to parse response: %v. Response body: %s", err, string(body))
 	}
 
-	if providers, ok := response["providers"].([]interface{}); ok {
-		return providers, nil, nil
+	providers, ok := response["providers"].([]interface{})
+	if !ok {
+		return nil, nil, fmt.Errorf("invalid response format: 'providers' field is missing or has wrong type. Response: %v", response)
 	}
-	return nil, nil, fmt.Errorf("invalid providers response format")
+
+	return providers, nil, nil
 }
 
 func (c *Client) GetInstalledProviders() ([]interface{}, *ErrorResponse, error) {
@@ -122,23 +166,27 @@ func (c *Client) GetInstalledProviders() ([]interface{}, *ErrorResponse, error) 
 func (c *Client) InstallProvider(providerConfig map[string]interface{}) (map[string]interface{}, *ErrorResponse, error) {
 	payload, err := json.Marshal(providerConfig)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to marshal provider config: %v", err)
 	}
 
 	req, err := http.NewRequest("POST", fmt.Sprintf("%s/providers/install", c.HostURL),
 		strings.NewReader(string(payload)))
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to create request: %v", err)
 	}
 
 	body, errResp, err := c.doReq(req)
 	if err != nil {
-		return nil, errResp, err
+		return nil, errResp, fmt.Errorf("failed to install provider: %v", err)
+	}
+
+	if body == nil {
+		return nil, nil, fmt.Errorf("received empty response body")
 	}
 
 	var response map[string]interface{}
 	if err := json.Unmarshal(body, &response); err != nil {
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("failed to parse response: %v. Response body: %s", err, string(body))
 	}
 
 	return response, nil, nil
