@@ -4,10 +4,10 @@
 
 # terraform-provider-keep
 
-[![docs](https://img.shields.io/static/v1?label=docs&message=terraform&color=informational&style=for-the-badge&logo=terraform)](https://registry.terraform.io/providers/pehlicd/keep/latest/docs)
-![downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.terraform.io%2Fv2%2Fproviders%2Fpehlicd%2Fkeep%3Finclude%3Dcategories%2Cmoved-to%2Cpotential-fork-of%2Cprovider-versions%2Ctop-modules%26include%3Dcategories%252Cmoved-to%252Cpotential-fork-of%252Cprovider-versions%252Ctop-modules%26name%3Dkeep%26namespace%3Dpehlicd&query=data.attributes.downloads&style=for-the-badge&logo=terraform&label=downloads&color=brightgreen)
-![latest version](https://img.shields.io/github/v/release/pehlicd/terraform-provider-keep?style=for-the-badge&label=latest%20version&color=orange)
-![license](https://img.shields.io/github/license/pehlicd/terraform-provider-keep?style=for-the-badge)
+[![docs](https://img.shields.io/static/v1?label=docs&message=terraform&color=informational&style=for-the-badge&logo=terraform)](https://registry.terraform.io/providers/justtrackio/keep/latest/docs)
+![downloads](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fregistry.terraform.io%2Fv2%2Fproviders%2Fjusttrackio%2Fkeep%3Finclude%3Dcategories%2Cmoved-to%2Cpotential-fork-of%2Cprovider-versions%2Ctop-modules%26include%3Dcategories%252Cmoved-to%252Cpotential-fork-of%252Cprovider-versions%252Ctop-modules%26name%3Dkeep%26namespace%3Djusttrackio&query=data.attributes.downloads&style=for-the-badge&logo=terraform&label=downloads&color=brightgreen)
+![latest version](https://img.shields.io/github/v/release/justtrackio/terraform-provider-keep?style=for-the-badge&label=latest%20version&color=orange)
+![license](https://img.shields.io/github/license/justtrackio/terraform-provider-keep?style=for-the-badge)
 
 This is a terraform provider for managing your [keep](https://github.com/keephq/keep) instance.
 
@@ -21,7 +21,7 @@ Add the following to your terraform configuration
 terraform {
   required_providers {
     keep = {
-      source  = "pehlicd/keep"
+      source  = "justtrackio/keep"
       version = "~> 0.0.1"
     }
   }
@@ -117,13 +117,13 @@ export AKS_CLIENT_SECRET=test-client-secret
 export AKS_TENANT_ID=test-tenant-id
 export AKS_RESOURCE_GROUP_NAME=test-resource-group
 export AKS_RESOURCE_NAME=test-resource-name
-TF_ACC=1 KEEP_BACKEND_URL=http://localhost:8080 KEEP_API_KEY=keepappkey go test ./... -v
+TF_ACC=1 KEEP_BACKEND_URL=http://localhost:8080 KEEP_API_KEY=keepappkey go test ./keep -v
 
 # Clean up
 docker compose down
 ```
 
-For more information, please refer to the [documentation](https://registry.terraform.io/providers/pehlicd/keep/latest/docs).
+For more information, please refer to the [documentation](https://registry.terraform.io/providers/justtrackio/keep/latest/docs).
 
 You can also find some hands-on examples in the [examples](./examples) directory.
 

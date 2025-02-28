@@ -1,4 +1,4 @@
-module github.com/pehlicd/terraform-provider-keep
+module github.com/justtrackio/terraform-provider-keep
 
 go 1.22.1
 
