@@ -28,4 +28,5 @@ description: |-
 
 ### Read-Only
 
+- `csv_content_hash` (String) Hash of the CSV file content for change detection
 - `id` (String) The ID of this resource.
