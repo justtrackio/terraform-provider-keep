@@ -1,6 +1,7 @@
 services:
   keep-backend:
     image: us-central1-docker.pkg.dev/keephq/keep/keep-api:latest
+    pull_policy: always
     ports:
       - "8080:8080"
     environment:

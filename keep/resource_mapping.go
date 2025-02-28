@@ -62,6 +62,45 @@ func getKeysFromMap(m map[string]bool) []string {
 	return keys
 }
 
+// formatMatchers converts matcher strings to arrays as required by the API
+func formatMatchers(matcherStrings []string) [][]string {
+	formatted := make([][]string, len(matcherStrings))
+	for i, matcher := range matcherStrings {
+		parts := strings.Split(matcher, " && ")
+		formatted[i] = parts
+	}
+	return formatted
+}
+
+// formatMatchersStringForState converts matcher arrays back to strings for state
+func formatMatchersStringForState(matcherArrays interface{}) []string {
+	switch v := matcherArrays.(type) {
+	case []string:
+		return v
+	case []interface{}:
+		formatted := make([]string, len(v))
+		for i, matcher := range v {
+			switch m := matcher.(type) {
+			case []interface{}:
+				parts := make([]string, len(m))
+				for j, part := range m {
+					if str, ok := part.(string); ok {
+						parts[j] = str
+					}
+				}
+				formatted[i] = strings.Join(parts, " && ")
+			case string:
+				formatted[i] = m
+			default:
+				formatted[i] = ""
+			}
+		}
+		return formatted
+	default:
+		return []string{}
+	}
+}
+
 func resourceMapping() *schema.Resource {
 	hasher := &FileHasher{
 		HashField:   "csv_content_hash",
@@ -236,20 +275,23 @@ func resourceCreateMapping(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	matchersSet := d.Get("matchers").(*schema.Set)
-	matchers := make([]string, len(matchersSet.List()))
+	matcherStrings := make([]string, len(matchersSet.List()))
 	for i, matcher := range matchersSet.List() {
-		matchers[i] = matcher.(string)
+		matcherStrings[i] = matcher.(string)
 	}
 
 	// Validate matchers against CSV content
-	if err := validateMatchersAgainstCSV(matchers, rows); err != nil {
+	if err := validateMatchersAgainstCSV(matcherStrings, rows); err != nil {
 		return diag.Errorf("Invalid matchers: %s", err)
 	}
+
+	// Format matchers as arrays for the API
+	formattedMatchers := formatMatchers(matcherStrings)
 
 	body := map[string]interface{}{
 		"name":        d.Get("name").(string),
 		"description": d.Get("description").(string),
-		"matchers":    matchers,
+		"matchers":    formattedMatchers,
 		"priority":    d.Get("priority").(int),
 		"rows":        rows,
 		"file_name":   fInfo.Name(),
@@ -271,7 +313,13 @@ func resourceCreateMapping(ctx context.Context, d *schema.ResourceData, m interf
 	d.Set("name", response["name"])
 	d.Set("description", response["description"])
 	d.Set("priority", response["priority"])
-	d.Set("matchers", response["matchers"])
+
+	// Convert matcher arrays back to strings for state if needed
+	if matcherArrays, ok := response["matchers"].([]interface{}); ok {
+		d.Set("matchers", formatMatchersStringForState(matcherArrays))
+	} else {
+		d.Set("matchers", matcherStrings)
+	}
 
 	// After successful creation, clean up any duplicates
 	if err := cleanupDuplicateMappings(client, fmt.Sprintf("%v", response["id"]), response["name"].(string)); err != nil {
@@ -322,9 +370,31 @@ func resourceReadMapping(ctx context.Context, d *schema.ResourceData, m interfac
 
 			d.Set("name", mapping["name"])
 			d.Set("description", mapping["description"])
-			d.Set("matchers", mapping["matchers"])
 			d.Set("priority", mapping["priority"])
 			d.Set("mapping_file_path", filePath)
+
+			// Handle matchers conversion
+			var matcherSet *schema.Set
+			if matchers, ok := mapping["matchers"].([]interface{}); ok {
+				matcherStrings := make([]interface{}, len(matchers))
+				for i, matcher := range matchers {
+					switch m := matcher.(type) {
+					case []interface{}:
+						parts := make([]string, len(m))
+						for j, part := range m {
+							if str, ok := part.(string); ok {
+								parts[j] = str
+							}
+						}
+						matcherStrings[i] = strings.Join(parts, " && ")
+					case string:
+						matcherStrings[i] = m
+					}
+				}
+				matcherSet = schema.NewSet(schema.HashString, matcherStrings)
+				d.Set("matchers", matcherSet)
+			}
+
 			return nil
 		}
 	}
@@ -416,20 +486,23 @@ func resourceUpdateMapping(ctx context.Context, d *schema.ResourceData, m interf
 	}
 
 	matchersSet := d.Get("matchers").(*schema.Set)
-	matchers := make([]string, len(matchersSet.List()))
+	matcherStrings := make([]string, len(matchersSet.List()))
 	for i, matcher := range matchersSet.List() {
-		matchers[i] = matcher.(string)
+		matcherStrings[i] = matcher.(string)
 	}
 
 	// Validate matchers against CSV content
-	if err := validateMatchersAgainstCSV(matchers, rows); err != nil {
+	if err := validateMatchersAgainstCSV(matcherStrings, rows); err != nil {
 		return diag.Errorf("Invalid matchers: %s", err)
 	}
+
+	// Format matchers as arrays for the API
+	formattedMatchers := formatMatchers(matcherStrings)
 
 	reqBody := map[string]interface{}{
 		"name":        d.Get("name").(string),
 		"description": d.Get("description").(string),
-		"matchers":    matchers,
+		"matchers":    formattedMatchers,
 		"priority":    d.Get("priority").(int),
 		"rows":        rows,
 		"file_name":   fInfo.Name(),
@@ -482,7 +555,9 @@ func resourceUpdateMapping(ctx context.Context, d *schema.ResourceData, m interf
 	d.Set("name", mappingResponse.Name)
 	d.Set("description", mappingResponse.Description)
 	d.Set("priority", mappingResponse.Priority)
-	d.Set("matchers", mappingResponse.Matchers)
+
+	// Convert matcher arrays back to strings for state
+	d.Set("matchers", formatMatchersStringForState(mappingResponse.Matchers))
 
 	// After successful update, clean up any duplicates
 	if err := cleanupDuplicateMappings(client, cast.ToString(mappingResponse.ID), mappingResponse.Name); err != nil {
