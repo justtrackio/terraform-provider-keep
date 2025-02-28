@@ -17,7 +17,7 @@ description: |-
 
 ### Required
 
-- `auth_config` (Map of String) Configuration of the keep provider authentication
+- `auth_config` (Map of String, Sensitive) Configuration of the keep provider authentication
 - `name` (String) Name of the keep provider
 - `type` (String) Type of the keep provider
 

@@ -92,7 +92,7 @@ Then run the tests using:
 
 ```bash
 # Run all tests
-TF_ACC=1 go test ./... -v
+TF_ACC=1 go test ./keep -v
 
 # Run specific tests
 TF_ACC=1 go test ./keep -v -run "TestAccProvider|TestAccResourceProvider"
@@ -124,8 +124,6 @@ docker compose down
 ```
 
 For more information, please refer to the [documentation](https://registry.terraform.io/providers/justtrackio/keep/latest/docs).
-
-You can also find some hands-on examples in the [examples](./examples) directory.
 
 You feel overwhelmed with these bunch of information? Don't worry, we got you covered. Just join keep slack workspace and throw your questions.
 
