@@ -92,7 +92,7 @@ Then run the tests using:
 
 ```bash
 # Run all tests
-TF_ACC=1 go test ./... -v
+TF_ACC=1 go test ./keep -v
 
 # Run specific tests
 TF_ACC=1 go test ./keep -v -run "TestAccProvider|TestAccResourceProvider"
