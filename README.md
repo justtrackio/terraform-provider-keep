@@ -117,6 +117,7 @@ export AKS_CLIENT_SECRET=test-client-secret
 export AKS_TENANT_ID=test-tenant-id
 export AKS_RESOURCE_GROUP_NAME=test-resource-group
 export AKS_RESOURCE_NAME=test-resource-name
+# Run the tests with the test credentials
 TF_ACC=1 KEEP_BACKEND_URL=http://localhost:8080 KEEP_API_KEY=keepappkey go test ./keep -v
 
 # Clean up
