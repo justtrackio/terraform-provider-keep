@@ -3,7 +3,7 @@
 page_title: "keep_extraction Resource - terraform-provider-keep"
 subcategory: ""
 description: |-
-  
+
 ---
 
 # keep_extraction (Resource)
