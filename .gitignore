@@ -27,6 +27,6 @@
 !.goreleaser.yml
 !.pre-commit-config.yaml
 !assets/**
-
+!openapi.json
 # ...even if they are in subdirectories
 !*/
