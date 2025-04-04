@@ -77,9 +77,14 @@ jobs:
             echo "No changes detected in OpenAPI schema"
           fi
 
+      - name: Update OpenAPI file
+        if: steps.check-diff.outputs.has_changes == 'true'
+        run: |
+          mv ./new-openapi.json ./openapi.json
+
       - name: Create Pull Request
         if: steps.check-diff.outputs.has_changes == 'true'
-        uses: peter-evans/create-pull-request@v6
+        uses: peter-evans/create-pull-request@v7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           commit-message: "chore: update OpenAPI schema to version ${{ steps.fetch-openapi.outputs.keep_version }}"
@@ -93,8 +98,3 @@ jobs:
           delete-branch: true
           add-paths: |
             openapi.json
-
-      - name: Update OpenAPI file
-        if: steps.check-diff.outputs.has_changes == 'true'
-        run: |
-          mv ./new-openapi.json ./openapi.json
