@@ -100,5 +100,6 @@ jobs:
           branch: update-openapi-schema
           base: main
           delete-branch: true
+          draft: always-true
           add-paths: |
             openapi.json
