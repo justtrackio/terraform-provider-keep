@@ -2,7 +2,7 @@ module github.com/justtrackio/terraform-provider-keep
 
 go 1.24
 
-toolchain go1.24.0
+toolchain go1.24.3
 
 require (
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.33.0
